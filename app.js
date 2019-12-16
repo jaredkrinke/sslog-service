@@ -1,11 +1,18 @@
 const process = require("process");
 const express = require("express");
 const bodyParser = require("body-parser");
-const app = express();
+const request = require("request");
 const sslog = require("sslog");
 
-const logMinimumPeriod = 10 * 1000;
+const app = express();
+
+const logMinimumPeriod = 60 * 1000;
 const trace = (process.env.TRACE === "1");
+
+const apiKey = process.env.WHKEY;
+if (!apiKey) {
+    throw new Error("$WHKEY is not set!");
+}
 
 // Core logic
 let logLastTime = Date.now() - logMinimumPeriod - 1;
@@ -19,9 +26,18 @@ function logScheduleWorkerIfNeeded() {
 
 function logSendMessage(message) {
     logLastTime = Date.now();
-    console.log(`${(new Date()).toISOString()} ${message.channel}: ${message.message}`);
+    console.log(`${(new Date()).toISOString()} Sent: ${message.channel}: ${message.message}`);
 
-    // TODO: Mobile notification
+    request({
+        method: "POST",
+        uri: `https://maker.ifttt.com/trigger/push/with/key/${apiKey}`,
+        json: true,
+        body: { value1: `${message.channel}: ${message.message}` },
+    }, function (error) {
+        if (error) {
+            console.error(`Error from web hook: ${error}`);
+        }
+    });
 }
 
 function logWorker() {
@@ -39,6 +55,8 @@ function logMessage(message) {
         logMessageQueue.push(message);
         logWorker();
     } else if (message.importance !== sslog.Importance.unimportant) {
+        console.log(`${(new Date()).toISOString()} Queued: ${message.channel}: ${message.message}`);
+
         logMessageQueue.push(message);
         logScheduleWorkerIfNeeded();
     }
